@@ -4,13 +4,15 @@ Validate request data before processing
 """
 from datetime import datetime, date, time
 from flask import jsonify
+import re
+from app.utils.security import validate_email_strict, sanitize_input
 
 
 def validate_email(email):
-    """Validate email format"""
-    if not email or '@' not in email:
+    """Validate email format (strict)"""
+    if not email:
         return False
-    return True
+    return validate_email_strict(email)
 
 
 def validate_phone(phone):
@@ -102,33 +104,67 @@ def validate_service_data(data, is_update=False):
     return errors
 
 
-def validate_user_data(data, is_update=False):
-    """Validate user registration data"""
+def validate_user_data(data, is_update=False, is_admin_creation=False):
+    """Validate user registration data
+    
+    Args:
+        data: User data dictionary
+        is_update: Whether this is an update operation
+        is_admin_creation: Whether admin is creating user (password optional, will be set to default)
+    """
+    from app.utils.security import validate_password_strength, sanitize_input
+    
     errors = []
     
     if not is_update or 'name' in data:
-        if not data.get('name'):
+        name = data.get('name', '').strip()
+        if not name:
             errors.append('name is required')
-        elif len(data.get('name', '')) < 2:
+        elif len(name) < 2:
             errors.append('name must be at least 2 characters')
+        elif len(name) > 100:
+            errors.append('name must be less than 100 characters')
+        else:
+            # Sanitize name
+            sanitized_name = sanitize_input(name, max_length=100)
+            if sanitized_name != name:
+                errors.append('name contains invalid characters')
     
     if not is_update or 'email' in data:
-        if not data.get('email'):
+        email = data.get('email', '').strip().lower()
+        if not email:
             errors.append('email is required')
-        elif not validate_email(data.get('email')):
+        elif not validate_email(email):
             errors.append('email is invalid')
+        elif len(email) > 120:
+            errors.append('email must be less than 120 characters')
     
+    # Password validation: required unless admin is creating user
     if not is_update or 'password' in data:
-        if not data.get('password'):
-            errors.append('password is required')
-        elif len(data.get('password', '')) < 6:
-            errors.append('password must be at least 6 characters')
+        if not is_admin_creation:  # Regular registration or update requires password
+            password = data.get('password', '')
+            if not password:
+                errors.append('password is required')
+            else:
+                # Validate password strength
+                is_valid, password_errors = validate_password_strength(password)
+                if not is_valid:
+                    errors.extend(password_errors)
+        # If admin creation, password is optional (will use default)
     
     if not is_update or 'role' in data:
-        if not data.get('role'):
+        role = data.get('role', '').lower()
+        if not role:
             errors.append('role is required')
-        elif data.get('role') not in ['admin', 'receptionist']:
-            errors.append('role must be either "admin" or "receptionist"')
+        else:
+            # When admin creates users, only staff roles are allowed (clients don't need accounts)
+            if is_admin_creation:
+                if role not in ['admin', 'manager', 'receptionist']:
+                    errors.append('role must be one of: "admin", "manager", or "receptionist" (clients use the public website and do not need accounts)')
+            else:
+                # For regular registration, allow all roles (though client registration is unlikely)
+                if role not in ['admin', 'manager', 'receptionist', 'client']:
+                    errors.append('role must be one of: "admin", "manager", "receptionist", or "client"')
     
     return errors
 

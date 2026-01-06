@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, send_from_directory
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -12,8 +12,22 @@ load_dotenv()
 db = SQLAlchemy()
 migrate = Migrate()
 
+# Create uploads directories if they don't exist
+SERVICES_UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'uploads', 'services')
+PROFILE_UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'uploads', 'profiles')
+PAYMENT_UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'uploads', 'payments')
+os.makedirs(SERVICES_UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(PROFILE_UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(PAYMENT_UPLOAD_FOLDER, exist_ok=True)
+
 def create_app():
     app = Flask(__name__)
+    
+    # Configure upload folders
+    app.config['SERVICES_UPLOAD_FOLDER'] = SERVICES_UPLOAD_FOLDER
+    app.config['PROFILE_UPLOAD_FOLDER'] = PROFILE_UPLOAD_FOLDER
+    app.config['PAYMENT_UPLOAD_FOLDER'] = PAYMENT_UPLOAD_FOLDER
+    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
     # Config
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key')
@@ -26,9 +40,22 @@ def create_app():
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     # Init extensions
-    CORS(app)
+    CORS(app, resources={r"/api/*": {"origins": ["http://localhost:3000", "http://127.0.0.1:3000"]}}, supports_credentials=True)
     db.init_app(app)
     migrate.init_app(app, db)
+    
+    # Add security headers
+    @app.after_request
+    def set_security_headers(response):
+        """Add security headers to all responses"""
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['X-XSS-Protection'] = '1; mode=block'
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+        response.headers['Content-Security-Policy'] = "default-src 'self'"
+        # Remove server header
+        response.headers.pop('Server', None)
+        return response
 
     # Import models (for Flask-Migrate)
     from app.models import User, Service, Appointment, WorkingHour
@@ -44,6 +71,19 @@ def create_app():
     app.register_blueprint(services_bp)
     app.register_blueprint(appointments_bp)
     app.register_blueprint(working_bp)
+
+    # Serve uploaded images
+    @app.route('/uploads/services/<filename>')
+    def uploaded_service_file(filename):
+        return send_from_directory(app.config['SERVICES_UPLOAD_FOLDER'], filename)
+    
+    @app.route('/uploads/profiles/<filename>')
+    def uploaded_profile_file(filename):
+        return send_from_directory(app.config['PROFILE_UPLOAD_FOLDER'], filename)
+    
+    @app.route('/uploads/payments/<filename>')
+    def uploaded_payment_file(filename):
+        return send_from_directory(app.config['PAYMENT_UPLOAD_FOLDER'], filename)
 
     # Test route
     @app.route('/')

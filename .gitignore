@@ -64,3 +64,11 @@ htmlcov/
 # Next.js (if any remnants)
 .next/
 out/
+
+# Uploads (user-uploaded files)
+backend/uploads/
+frontend/public/uploads/
+
+# Test/debug scripts (optional - uncomment if you don't want to commit these)
+# backend/check_email_config.py
+# backend/test_email_password.py

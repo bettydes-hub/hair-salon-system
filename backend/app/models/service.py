@@ -12,6 +12,8 @@ class Service(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text)
+    category = db.Column(db.String(100), nullable=True)  # Service category
+    image_url = db.Column(db.String(255), nullable=True)  # Path to service image
     duration_minutes = db.Column(db.Integer, nullable=False)  # Time in minutes
     price = db.Column(db.Numeric(10, 2), nullable=False)  # DECIMAL(10,2)
     is_active = db.Column(db.Boolean, default=True)
